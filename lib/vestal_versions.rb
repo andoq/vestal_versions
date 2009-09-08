@@ -26,7 +26,7 @@ module LaserLemon
       end
 
       def versioned
-        has_many :versions, :as => :versioned, :order => 'versions.number ASC', :dependent => :destroy do
+        has_many :versions, :as => :versioned, :order => 'versions.number ASC', :dependent => :delete_all do
           def between(from_value, to_value)
             from, to = number_at(from_value), number_at(to_value)
             return [] if from.nil? || to.nil?
@@ -55,7 +55,9 @@ module LaserLemon
           end
         end
 
-        after_save :create_version, :if => :needs_version?
+        after_create :create_initial_version
+        after_update :create_initial_version, :if => :needs_initial_version?
+        after_update :create_version, :if => :needs_version?
 
         include InstanceMethods
         alias_method_chain :reload, :versions
@@ -64,6 +66,10 @@ module LaserLemon
 
     module InstanceMethods
       private
+        def needs_initial_version?
+          versions.empty?
+        end
+
         def needs_version?
           !revisable_changes.empty?
         end
@@ -73,13 +79,12 @@ module LaserLemon
           @version = new_version
         end
 
+        def create_initial_version
+          versions.create(:changes => nil, :number => 1)
+        end
+
         def create_version
-          if versions.empty?
-            versions.create(:changes => attributes, :number => 1)
-          else
-            reset_version
-            versions.create(:changes => revisable_changes, :number => (version.to_i + 1))
-          end
+          versions.create(:changes => revisable_changes, :number => (last_version + 1))
           reset_version
         end
 
@@ -145,13 +150,9 @@ module LaserLemon
           saved
         end
 
-        def last_changes
+        def latest_changes
           return {} if version.nil? || version == 1
           versions.at(version).changes
-        end
-
-        def last_changed
-          last_changes.keys
         end
     end
   end
