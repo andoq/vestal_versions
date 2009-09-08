@@ -7,6 +7,24 @@ module LaserLemon
     end
 
     module ClassMethods
+
+      def has_many_versioned(association_id, options = {}, &extension)
+
+        if options[:through]
+          raise 'Versioning through relation ships is not supported.  Version the original relationship instead.'
+        end
+        has_many association_id, options, &extension
+
+        versioned_class = self
+
+        self.reflections[association_id].klass.send(:define_method, "vestal_version_#{self.reflections[association_id].name}_after_save_callback", Proc.new {
+            self.send((versioned_class.name.downcase).to_sym).send(:add_association, self)
+            self.send((versioned_class.name.downcase).to_sym).send(:save)
+          })
+        self.reflections[association_id].klass.send(:after_save, "vestal_version_#{self.reflections[association_id].name}_after_save_callback".to_sym)
+
+      end
+
       def versioned
         has_many :versions, :as => :versioned, :order => 'versions.number ASC', :dependent => :destroy do
           def between(from_value, to_value)
@@ -47,7 +65,7 @@ module LaserLemon
     module InstanceMethods
       private
         def needs_version?
-          !changed.empty?
+          !revisable_changes.empty?
         end
 
         def reset_version(new_version = nil)
@@ -60,10 +78,17 @@ module LaserLemon
             versions.create(:changes => attributes, :number => 1)
           else
             reset_version
-            versions.create(:changes => changes, :number => (version.to_i + 1))
+            versions.create(:changes => revisable_changes, :number => (version.to_i + 1))
           end
-
           reset_version
+        end
+
+        def add_association(association_object)
+          association_changes.merge!('association' => {:action => 'add', :name => association_object.class.name, :id => association_object.id})
+        end
+
+        def remove_association(association_object)
+          association_changes.merge!('association' => ['remove', association_object.id])
         end
 
       public
@@ -73,6 +98,14 @@ module LaserLemon
 
         def last_version
           @last_version ||= versions.maximum(:number)
+        end
+
+        def association_changes
+          @association_changes ||= {}
+        end
+
+        def revisable_changes
+          changes.merge!(association_changes)
         end
 
         def reverted?
@@ -94,10 +127,10 @@ module LaserLemon
           backward = chain.first > chain.last
           backward ? chain.pop : chain.shift
 
-          timestamps = %w(created_at created_on updated_at updated_on)
+          unrevertable_changes = %w(created_at created_on updated_at updated_on association)
 
           chain.each do |version|
-            version.changes.except(*timestamps).each do |attribute, change|
+            version.changes.except(*unrevertable_changes).each do |attribute, change|
               new_value = backward ? change.first : change.last
               write_attribute(attribute, new_value)
             end

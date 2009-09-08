@@ -24,7 +24,7 @@ class ChangesTest < Test::Unit::TestCase
       assert_contains @user.versions.last.changes.keys, timestamp
     end
 
-    should 'contain no more than the changed attributes and timestamps' do
+    should 'contain no more than the changed attributes and not timestamps' do
       timestamps = %w(created_at created_on updated_at updated_on)
       @user.name = 'Steve Jobs'
       changes = @user.changes
