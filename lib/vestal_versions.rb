@@ -11,10 +11,15 @@ module LaserLemon
       def has_many_versioned(association_id, options = {}, &extension)
 
         if options[:through]
-          raise 'Versioning through relation ships is not supported.  Version the original relationship instead.'
+          raise 'Versioning through relation ships is not supported.  Version the join relationship instead.'
         end
+        options[:after_remove] ||= []
+        options[:after_remove] << :remove_association
         has_many association_id, options, &extension
 
+        #We can't use the after_add callback, because the object may not be saved, and then we don't have an ID to record.
+        #So we need to put the recording of the change on the associated model's after_save callback.s
+        #TODO: figure out how to get the change into the calling objects's changes
         versioned_class = self
 
         self.reflections[association_id].klass.send(:define_method, "vestal_version_#{self.reflections[association_id].name}_after_save_callback", Proc.new {
@@ -93,7 +98,8 @@ module LaserLemon
         end
 
         def remove_association(association_object)
-          association_changes.merge!('association' => ['remove', association_object.id])
+          association_changes.merge!('association' => {:action => 'remove', :name => association_object.class.name, :id => association_object.id})
+          save #save here so that the version is recorded.  This keeps it consistent w/ adding a association.  If this is ever fixed on add, remove this save call
         end
 
       public
