@@ -1,6 +1,8 @@
 ActiveRecord::Base.establish_connection(
-  :adapter => defined?(RUBY_ENGINE) && RUBY_ENGINE == 'jruby' ? 'jdbcsqlite3' : 'sqlite3',
-  :database => File.join(File.dirname(__FILE__), 'test.db')
+  :adapter => defined?(RUBY_ENGINE) && RUBY_ENGINE == 'jruby' ? 'jdbcsqlite3' : 'mysql',
+  :database => 'vestal_test',
+  :username => 'root',
+  :password => 'root'
 )
 
 class CreateSchema < ActiveRecord::Migration
@@ -8,11 +10,13 @@ class CreateSchema < ActiveRecord::Migration
     create_table :users, :force => true do |t|
       t.string :first_name
       t.string :last_name
+      t.string :unversioned
       t.timestamps
     end
 
     create_table :projects, :force => true do |t|
       t.string :name
+      t.string :unversioned
       t.datetime :due_date, :default => 1.day.ago
       t.timestamps
     end
@@ -49,12 +53,12 @@ class Project < ActiveRecord::Base
   has_many :user_projects
   has_many :users, :through => :user_projects
 
-  versioned
+  versioned :only => :name
 end
 
 
 class User < ActiveRecord::Base
-  versioned
+  versioned :except => :unversioned, :timestamps => true
 
   has_many_versioned :user_projects
   has_many :projects, :through => :user_projects

@@ -66,5 +66,20 @@ class CreationTest < Test::Unit::TestCase
         assert_equal @count, @user.versions.count
       end
     end
+
+    context 'after updating an untracked column' do
+      setup do
+        #use a project object for this test, because the user object is tracking timestamps
+        @project = Project.create!(:name => 'test')
+        @initial_count = @project.versions.count
+        @new_value = 'Steve Jobs'
+        @project.update_attribute(:unversioned, @new_value)
+        @count = @project.versions.count
+      end
+
+      should 'not have a new version' do
+        assert_equal @initial_count, @count
+      end
+    end
   end
 end

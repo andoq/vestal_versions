@@ -4,6 +4,10 @@ module LaserLemon
   module VestalVersions
     def self.included(base)
       base.extend ClassMethods
+
+      class << base
+        attr_accessor :versioned_columns
+      end
     end
 
     module ClassMethods
@@ -30,7 +34,9 @@ module LaserLemon
 
       end
 
-      def versioned
+      def versioned options = {}
+        set_revisable_columns(options)
+
         has_many :versions, :as => :versioned, :order => 'versions.number ASC', :dependent => :delete_all do
           def between(from_value, to_value)
             from, to = number_at(from_value), number_at(to_value)
@@ -67,6 +73,20 @@ module LaserLemon
         include InstanceMethods
         alias_method_chain :reload, :versions
       end
+      
+      private
+
+      # Returns an Array of the columns that are watched for changes.
+      def set_revisable_columns(options)
+        return unless self.versioned_columns.blank?
+        return self.versioned_columns = [] if options[:except] == :all
+        return self.versioned_columns = [options[:only]].flatten.map(&:to_s).map(&:downcase) unless options[:only].blank?
+
+        except = [options[:except]].flatten || []
+        #don't version some columns by default
+        except += %w(created_at created_on updated_at updated_on) unless options[:timestamps]
+        self.versioned_columns ||= (column_names - except.map(&:to_s)).flatten.map(&:downcase)
+      end
     end
 
     module InstanceMethods
@@ -76,7 +96,7 @@ module LaserLemon
         end
 
         def needs_version?
-          !revisable_changes.empty?
+          !versioned_changes.empty?
         end
 
         def reset_version(new_version = nil)
@@ -89,7 +109,7 @@ module LaserLemon
         end
 
         def create_version
-          versions.create(:changes => revisable_changes, :number => (last_version + 1))
+          versions.create(:changes => versioned_changes, :number => (last_version + 1))
           reset_version
         end
 
@@ -115,8 +135,10 @@ module LaserLemon
           @association_changes ||= {}
         end
 
-        def revisable_changes
-          changes.merge!(association_changes)
+        def versioned_changes
+          versioned_changes = changes
+          versioned_changes.delete_if {|column_name, values| !self.class.versioned_columns.member?(column_name)}
+          versioned_changes.merge!(association_changes)
         end
 
         def reverted?
