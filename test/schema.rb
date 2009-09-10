@@ -49,13 +49,6 @@ class UserProject < ActiveRecord::Base
   end
 end
 
-class Project < ActiveRecord::Base
-  has_many :user_projects
-  has_many :users, :through => :user_projects
-
-  versioned :only => :name
-end
-
 
 class User < ActiveRecord::Base
   versioned :except => :unversioned, :timestamps => true
@@ -70,6 +63,13 @@ class User < ActiveRecord::Base
   def name=(names)
     self[:first_name], self[:last_name] = names.split(' ', 2)
   end
+end
+
+class Project < ActiveRecord::Base
+  has_many :user_projects
+  has_many_versioned :users, :through => :user_projects
+
+  versioned :only => :name
 end
 
 

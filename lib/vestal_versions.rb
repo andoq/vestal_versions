@@ -14,23 +14,34 @@ module LaserLemon
 
       def has_many_versioned(association_id, options = {}, &extension)
 
-        if options[:through]
-          raise 'Versioning through relation ships is not supported.  Version the join relationship instead.'
-        end
+        
         options[:after_remove] ||= []
         options[:after_remove] << :remove_association
         has_many association_id, options, &extension
 
-        #We can't use the after_add callback, because the object may not be saved, and then we don't have an ID to record.
-        #So we need to put the recording of the change on the associated model's after_save callback.s
+        #We can't use the after_add callback of the association, because the object may not be saved, and then we don't have an ID to record.
+        #So we need to put the recording of the change on the associated model's after_save callback.
         #TODO: figure out how to get the change into the calling objects's changes
+
         versioned_class = self
 
-        self.reflections[association_id].klass.send(:define_method, "vestal_version_#{self.reflections[association_id].name}_after_save_callback", Proc.new {
-            self.send((versioned_class.name.downcase).to_sym).send(:add_association, self)
+        #find the klass object to add the after_save callback (this is the join model for a has_many :through relationship
+        if options[:through]
+          callback_klass = self.reflections[association_id].through_reflection.klass
+          primary_key_name = self.reflections[association_id].source_reflection.primary_key_name
+          object_type = self.reflections[association_id].source_reflection.class_name
+        else
+          callback_klass = self.reflections[association_id].klass
+          primary_key_name = self.reflections[association_id].klass.primary_key
+          object_type = self.reflections[association_id].klass.class_name
+        end
+
+
+        callback_klass.send(:define_method, "vestal_version_#{self.reflections[association_id].name}_after_save_callback", Proc.new {
+            self.send((versioned_class.name.downcase).to_sym).send(:add_association, object_type, self.send(primary_key_name.to_sym))
             self.send((versioned_class.name.downcase).to_sym).send(:save)
           })
-        self.reflections[association_id].klass.send(:after_save, "vestal_version_#{self.reflections[association_id].name}_after_save_callback".to_sym)
+        callback_klass.send(:after_save, "vestal_version_#{self.reflections[association_id].name}_after_save_callback".to_sym)
 
       end
 
@@ -113,12 +124,12 @@ module LaserLemon
           reset_version
         end
 
-        def add_association(association_object)
-          association_changes.merge!('association' => {:action => 'add', :name => association_object.class.name, :id => association_object.id})
+        def add_association(object_type, id)
+          association_changes.merge!(:association => {:action => :add, :name => object_type, :id => id})
         end
 
         def remove_association(association_object)
-          association_changes.merge!('association' => {:action => 'remove', :name => association_object.class.name, :id => association_object.id})
+          association_changes.merge!(:association => {:action => :remove, :name => association_object.class.name, :id => association_object.id})
           save #save here so that the version is recorded.  This keeps it consistent w/ adding a association.  If this is ever fixed on add, remove this save call
         end
 
