@@ -33,6 +33,12 @@ class CreateSchema < ActiveRecord::Migration
       t.integer :number
       t.datetime :created_at
     end
+
+    create_table :tags, :force => true do |t|
+      t.belongs_to :taggable, :polymorphic => true
+      t.string :name
+      t.timestamps
+    end
   end
 end
 
@@ -65,11 +71,18 @@ class User < ActiveRecord::Base
   end
 end
 
+class Tag < ActiveRecord::Base
+  belongs_to :taggable, :polymorphic => true
+end
+
 class Project < ActiveRecord::Base
   has_many :user_projects
   has_many_versioned :users, :through => :user_projects
+  has_many_versioned :tags, :as => :taggable
 
   versioned :only => :name
 end
+
+
 
 

@@ -77,4 +77,47 @@ class AssociationsTest < Test::Unit::TestCase
       assert_equal(@user.id, @project.versions.last.changes[:association][:id])
     end
   end
+
+  context "A model with a has_many polymorphic association" do
+    setup do
+      @project = Project.create(:name => 'Vestal Versions')
+      @tag = Tag.create!(:name => 'Good Times')
+    end
+
+    should 'add a version and record the id when an associations is added' do
+      old_version_count = @project.versions.size
+      @project.tags << @tag
+      @project.reload
+      assert_equal(old_version_count + 1, @project.versions.size)
+      assert_contains @project.versions.last.changes.keys, :association
+      assert_equal(:add, @project.versions.last.changes[:association][:action])
+      assert_equal(@tag.id, @project.versions.last.changes[:association][:id])
+    end
+
+    should 'record the id of the object when it is removed' do
+      old_version_count = @project.versions.size
+      @project.tags.delete(@tag)
+      @project.reload
+      assert_equal(old_version_count + 1, @project.versions.size)
+      assert_contains @project.versions.last.changes.keys, :association
+      assert_equal(:remove, @project.versions.last.changes[:association][:action])
+      assert_equal(@tag.id, @project.versions.last.changes[:association][:id])
+    end
+
+    should 'record the id of the object when added again' do
+      old_version_count = @project.versions.size
+      @project.tags << @tag
+      @project.reload
+      assert_equal(old_version_count + 1, @project.versions.size)
+      assert_contains @project.versions.last.changes.keys, :association
+      assert_equal(:add, @project.versions.last.changes[:association][:action])
+      assert_equal(@tag.id, @project.versions.last.changes[:association][:id])
+    end
+  end
+
+  context "a associated object that is not associated to anything" do
+    should 'not cause any errors' do
+      @user_project = UserProject.create!
+    end
+  end
 end

@@ -14,7 +14,6 @@ module LaserLemon
 
       def has_many_versioned(association_id, options = {}, &extension)
 
-        
         options[:after_remove] ||= []
         options[:after_remove] << :remove_association
         has_many association_id, options, &extension
@@ -25,23 +24,33 @@ module LaserLemon
 
         versioned_class = self
 
-        #find the klass object to add the after_save callback (this is the join model for a has_many :through relationship
+        #find the class to add the after_save callback (this is the join model for a has_many :through relationship
         if options[:through]
-          callback_klass = self.reflections[association_id].through_reflection.klass
-          primary_key_name = self.reflections[association_id].source_reflection.primary_key_name
+          associated_class = self.reflections[association_id].through_reflection.klass
+          associated_object_id_name = self.reflections[association_id].through_reflection_primary_key
+          versioned_class_primary_key = options[:primary_key] || :id
           object_type = self.reflections[association_id].source_reflection.class_name
-        else
-          callback_klass = self.reflections[association_id].klass
-          primary_key_name = self.reflections[association_id].klass.primary_key
+          association_foreign_key = self.reflections[association_id].through_reflection.primary_key_name
+        else          
+          associated_class = self.reflections[association_id].klass
+          associated_object_id_name = associated_class.primary_key
+          versioned_class_primary_key = options[:primary_key] || :id
           object_type = self.reflections[association_id].klass.class_name
+          association_foreign_key = self.reflections[association_id].primary_key_name
         end
 
-
-        callback_klass.send(:define_method, "vestal_version_#{self.reflections[association_id].name}_after_save_callback", Proc.new {
-            self.send((versioned_class.name.downcase).to_sym).send(:add_association, object_type, self.send(primary_key_name.to_sym))
-            self.send((versioned_class.name.downcase).to_sym).send(:save)
-          })
-        callback_klass.send(:after_save, "vestal_version_#{self.reflections[association_id].name}_after_save_callback".to_sym)
+        #define a method on the associated class which will record the change and save the class so it will have a new version,
+        #and then add that method to the after_save callback.
+        associated_class.send(:define_method, "vestal_version_#{self.reflections[association_id].name}_after_save_callback", Proc.new {
+          versioned_object_id = self.send(association_foreign_key.to_sym)
+          associated_object_id = self.send(associated_object_id_name.to_sym)
+          if associated_object_id && versioned_object_id #the assoicate object may have been created w/o being associated.
+            versioned_object = versioned_class.first(:conditions => "#{versioned_class_primary_key} = #{versioned_object_id}")
+            versioned_object.send(:add_association, object_type, associated_object_id)
+            versioned_object.send(:save)
+          end
+        })
+        associated_class.send(:after_save, "vestal_version_#{self.reflections[association_id].name}_after_save_callback".to_sym)
 
       end
 
